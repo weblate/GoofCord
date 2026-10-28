@@ -1,0 +1,35 @@
+name: Publish to WinGet
+
+on:
+  release:
+    types: [released]
+
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to submit (e.g. v2.3.1)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: winget
+  cancel-in-progress: false
+
+jobs:
+  submit:
+    name: Submit ${{ inputs.tag || github.event.release.tag_name }} to winget-pkgs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Submit to winget-pkgs
+        uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: MilkShift.GoofCord
+          installers-regex: 'GoofCord-Setup-.*\.exe$'
+          release-repository: Milkshiift/GoofCord
+          release-tag: ${{ inputs.tag || github.event.release.tag_name }}
+          release-notes-url: "https://github.com/Milkshiift/GoofCord/releases/tag/${{ inputs.tag || github.event.release.tag_name }}"
+          max-versions-to-keep: 0
+          token: ${{ secrets.WINGET_TOKEN }}
