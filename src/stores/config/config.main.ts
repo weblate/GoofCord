@@ -167,7 +167,10 @@ async function saveToDisk(state: Config) {
 			pendingEncryption.delete(typedKey);
 			(state as any)[typedKey] = await encryptSafeStorage(value);
 		}
-		await fs.promises.writeFile(getConfigLocation(), JSON.stringify(state, null, 2), "utf-8");
+		const configPath = getConfigLocation();
+		const tempPath = `${configPath}.tmp`;
+		await fs.promises.writeFile(tempPath, JSON.stringify(state, null, 2), "utf-8");
+		await fs.promises.rename(tempPath, configPath);
 	} catch (e: unknown) {
 		console.error(LOG_PREFIX, "Failed to save settings:", e);
 		dialog.showErrorBox("GoofCord was unable to save the settings", getErrorMessage(e));

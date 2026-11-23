@@ -66,6 +66,9 @@ export async function initPatchcord() {
 	} catch (e) {
 		console.error("Failed to import/init patchcord", e);
 		hasPipewirePulse = false;
+		const failedPatchbay = patchbay;
+		patchbay = undefined;
+		if (failedPatchbay) void failedPatchbay.dispose().catch(() => {});
 	}
 }
 

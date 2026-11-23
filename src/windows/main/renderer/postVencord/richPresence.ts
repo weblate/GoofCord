@@ -7,6 +7,7 @@ export function initRichPresence() {
 
 	if (!arRPC) {
 		console.error("WebRichPresence plugin not found");
+		return;
 	}
 
 	GoofCord.arrpc.onActivity(async (dataJson: string) => {

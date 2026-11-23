@@ -10,7 +10,12 @@ const getActiveKeybinds = (): Map<string, Keybind> => {
 
 	if (!keybindsRaw) return activeKeybinds;
 
-	const keybinds = JSON.parse(keybindsRaw)?._state;
+	let keybinds: Record<string, any> | undefined;
+	try {
+		keybinds = JSON.parse(keybindsRaw)?._state;
+	} catch {
+		return activeKeybinds;
+	}
 	if (!keybinds) return activeKeybinds;
 
 	const MODIFIERS = {
@@ -22,9 +27,11 @@ const getActiveKeybinds = (): Map<string, Keybind> => {
 
 	for (const bind in keybinds) {
 		const binding = keybinds[bind];
+		if (!binding || typeof binding !== "object") continue;
 
 		// We are only interested in user defined keybinds
 		if (binding.managed === true || binding.enabled === false) continue;
+		if (!Array.isArray(binding.shortcut)) continue;
 
 		const keys = binding.shortcut.map((x: number[]) => x[1]);
 

@@ -71,7 +71,9 @@ async function updateInvidiousInstance() {
   }
 }
 async function findFastestInstance() {
-  const response = await fetch("https://api.invidious.io/instances.json?pretty=0&sort_by=type,users");
+  const response = await fetchWithTimeout("https://api.invidious.io/instances.json?pretty=0&sort_by=type,users", {}, 1e4);
+  if (!response.ok)
+    throw new Error(`Invidious instance list returned HTTP ${response.status}`);
   const json = await response.json();
   const instances = json.map((instance) => instance[1].uri);
   console.log("Testing Invidious instances...");
@@ -82,9 +84,9 @@ async function findFastestInstance() {
       continue;
     const start = performance.now();
     try {
-      await fetch(instance + "/embed/5IXQ6f6eMxQ?autoplay=1&player_style=youtube&local=true", {
+      await fetchWithTimeout(instance + "/embed/5IXQ6f6eMxQ?autoplay=1&player_style=youtube&local=true", {
         mode: "no-cors"
-      });
+      }, 5000);
     } catch (e) {}
     const end = performance.now();
     const time = end - start;
@@ -96,6 +98,15 @@ async function findFastestInstance() {
   }
   console.log("Fastest instance:", prevBestInstance, prevBestTime);
   return prevBestInstance;
+}
+async function fetchWithTimeout(input, init = {}, timeoutMs = 1e4) {
+  const controller = new AbortController;
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // src/windows/main/renderer/postVencord/messageEncryption.ts
@@ -234,6 +245,7 @@ function initRichPresence() {
   const arRPC = matchingKey ? plugins[matchingKey] : undefined;
   if (!arRPC) {
     console.error("WebRichPresence plugin not found");
+    return;
   }
   GoofCord.arrpc.onActivity(async (dataJson) => {
     await VC.Webpack.onceReady;
@@ -277,8 +289,12 @@ function patchScreenshare() {
     const stream = await original.call(this, opts);
     console.log("Setting stream's content hint and audio device");
     const settings = window.screenshareSettings;
+    if (!settings)
+      return stream;
     settings.width = Math.round(settings.resolution * (screen.width / screen.height));
     const videoTrack = stream.getVideoTracks()[0];
+    if (!videoTrack)
+      return stream;
     videoTrack.contentHint = settings.contentHint || "motion";
     const constraints = {
       ...videoTrack.getConstraints(),
@@ -296,24 +312,34 @@ function patchScreenshare() {
       audioTrack.contentHint = "music";
     const id = await getVirtmic();
     if (id) {
-      const audio = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: {
-            exact: id
-          },
-          autoGainControl: false,
-          echoCancellation: false,
-          noiseSuppression: false,
-          channelCount: 2,
-          sampleRate: 48000,
-          sampleSize: 16
+      try {
+        const audio = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: {
+              exact: id
+            },
+            autoGainControl: false,
+            echoCancellation: false,
+            noiseSuppression: false,
+            channelCount: 2,
+            sampleRate: 48000,
+            sampleSize: 16
+          }
+        });
+        for (const t of stream.getAudioTracks()) {
+          t.stop();
+          stream.removeTrack(t);
         }
-      });
-      for (const t of stream.getAudioTracks()) {
-        t.stop();
-        stream.removeTrack(t);
+        const virtualMicTrack = audio.getAudioTracks()[0];
+        if (!virtualMicTrack) {
+          for (const t of audio.getTracks())
+            t.stop();
+          throw new Error("Virtual microphone did not provide an audio track");
+        }
+        stream.addTrack(virtualMicTrack);
+      } catch (e) {
+        console.error("Failed to replace screenshare audio with virtual mic:", e);
       }
-      stream.addTrack(audio.getAudioTracks()[0]);
     }
     return stream;
   };

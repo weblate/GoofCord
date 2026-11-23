@@ -180,7 +180,10 @@ function startDomOptimizer() {
       const element = args[0];
       if (typeof element?.className === "string") {
         if (delayedClasses.some((partial) => element.className.includes(partial))) {
-          setTimeout(() => orig.apply(this, args), 100 - Math.random() * 50);
+          setTimeout(() => {
+            if (element.parentNode === this)
+              orig.apply(this, args);
+          }, 100 - Math.random() * 50);
           return;
         }
       }

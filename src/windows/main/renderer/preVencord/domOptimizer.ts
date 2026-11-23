@@ -11,7 +11,9 @@ export function startDomOptimizer() {
 			if (typeof element?.className === "string") {
 				if (delayedClasses.some((partial) => element.className.includes(partial))) {
 					//console.log("DELAYED", element.className);
-					setTimeout(() => orig.apply(this, args), 100 - Math.random() * 50);
+					setTimeout(() => {
+						if (element.parentNode === this) orig.apply(this, args);
+					}, 100 - Math.random() * 50);
 					return;
 				}
 			}

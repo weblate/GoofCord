@@ -19,12 +19,14 @@ export async function initGoofbind() {
 		goofbind.on("error", (err) => console.error("Goofbind", err));
 
 		goofbind.on("pressed", (id) => {
+			if (!mainWindow || mainWindow.isDestroyed()) return;
 			if (!isWayland && mainWindow.isFocused()) return;
 			console.log(`Shortcut Activated! ID: ${id}`);
 			mainWindow.webContents.send("keybinds:trigger", id, false);
 		});
 
 		goofbind.on("released", (id) => {
+			if (!mainWindow || mainWindow.isDestroyed()) return;
 			if (!isWayland && mainWindow.isFocused()) return;
 			console.log(`Shortcut Released! ID: ${id}`);
 			mainWindow.webContents.send("keybinds:trigger", id, true);

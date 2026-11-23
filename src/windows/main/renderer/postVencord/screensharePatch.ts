@@ -24,9 +24,11 @@ export function patchScreenshare() {
 		console.log("Setting stream's content hint and audio device");
 
 		const settings = window.screenshareSettings;
+		if (!settings) return stream;
 		settings.width = Math.round(settings.resolution * (screen.width / screen.height));
 
 		const videoTrack = stream.getVideoTracks()[0];
+		if (!videoTrack) return stream;
 		videoTrack.contentHint = settings.contentHint || "motion";
 
 		const constraints = {
@@ -52,26 +54,35 @@ export function patchScreenshare() {
 		// Patchcord
 		const id = await getVirtmic();
 		if (id) {
-			const audio = await navigator.mediaDevices.getUserMedia({
-				audio: {
-					deviceId: {
-						exact: id,
+			try {
+				const audio = await navigator.mediaDevices.getUserMedia({
+					audio: {
+						deviceId: {
+							exact: id,
+						},
+						autoGainControl: false,
+						echoCancellation: false,
+						noiseSuppression: false,
+						channelCount: 2,
+						sampleRate: 48000,
+						sampleSize: 16,
 					},
-					autoGainControl: false,
-					echoCancellation: false,
-					noiseSuppression: false,
-					channelCount: 2,
-					sampleRate: 48000,
-					sampleSize: 16,
-				},
-			});
+				});
 
-			for (const t of stream.getAudioTracks()) {
-				t.stop();
-				stream.removeTrack(t);
+				for (const t of stream.getAudioTracks()) {
+					t.stop();
+					stream.removeTrack(t);
+				}
+
+				const virtualMicTrack = audio.getAudioTracks()[0];
+				if (!virtualMicTrack) {
+					for (const t of audio.getTracks()) t.stop();
+					throw new Error("Virtual microphone did not provide an audio track");
+				}
+				stream.addTrack(virtualMicTrack);
+			} catch (e) {
+				console.error("Failed to replace screenshare audio with virtual mic:", e);
 			}
-
-			stream.addTrack(audio.getAudioTracks()[0]);
 		}
 
 		return stream;

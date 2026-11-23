@@ -29,7 +29,8 @@ export async function updateInvidiousInstance() {
 }
 
 async function findFastestInstance() {
-	const response = await fetch("https://api.invidious.io/instances.json?pretty=0&sort_by=type,users");
+	const response = await fetchWithTimeout("https://api.invidious.io/instances.json?pretty=0&sort_by=type,users", {}, 10000);
+	if (!response.ok) throw new Error(`Invidious instance list returned HTTP ${response.status}`);
 	const json = await response.json();
 	const instances = json.map((instance: { uri: string }[]) => instance[1].uri);
 
@@ -40,9 +41,9 @@ async function findFastestInstance() {
 		if (!instance.includes("https")) continue;
 		const start = performance.now();
 		try {
-			await fetch(instance + "/embed/5IXQ6f6eMxQ?autoplay=1&player_style=youtube&local=true", {
+			await fetchWithTimeout(instance + "/embed/5IXQ6f6eMxQ?autoplay=1&player_style=youtube&local=true", {
 				mode: "no-cors",
-			});
+			}, 5000);
 		} catch (e) {}
 		const end = performance.now();
 		const time = end - start;
@@ -55,4 +56,15 @@ async function findFastestInstance() {
 
 	console.log("Fastest instance:", prevBestInstance, prevBestTime);
 	return prevBestInstance;
+}
+
+async function fetchWithTimeout(input: string, init: RequestInit = {}, timeoutMs = 10000): Promise<Response> {
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+	try {
+		return await fetch(input, { ...init, signal: controller.signal });
+	} finally {
+		clearTimeout(timeout);
+	}
 }

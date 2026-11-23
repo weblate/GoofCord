@@ -4,7 +4,7 @@ import path from "node:path";
 import { getConfig, setConfig } from "@root/src/stores/config/config.main.ts";
 import { dialog } from "electron";
 import pc from "picocolors";
-import { getGoofCordFolderPath, readOrCreateFolder } from "../../utils.ts";
+import { getGoofCordFolderPath, readOrCreateFolder, resolveInside } from "../../utils.ts";
 import { mainWindow } from "../../windows/main/main.ts";
 
 const LOG_PREFIX = pc.yellow("[Asset Loader]");
@@ -170,18 +170,22 @@ async function processStyleUpdate(filename: string) {
 			await fs.access(filePath);
 		} catch {
 			// File deleted
-			mainWindow?.webContents.send("assetLoader:styleUpdate", {
-				file: filename,
-				content: "",
-			});
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				mainWindow.webContents.send("assetLoader:styleUpdate", {
+					file: filename,
+					content: "",
+				});
+			}
 			return;
 		}
 
 		const content = await fs.readFile(filePath, "utf-8");
-		mainWindow?.webContents.send("assetLoader:styleUpdate", {
-			file: filename,
-			content,
-		});
+		if (mainWindow && !mainWindow.isDestroyed()) {
+			mainWindow.webContents.send("assetLoader:styleUpdate", {
+				file: filename,
+				content,
+			});
+		}
 		console.log(LOG_PREFIX, `Hot-reloaded: ${filename}`);
 	} catch (err) {
 		console.error(LOG_PREFIX, `Error processing update for ${filename}:`, err);
@@ -192,20 +196,19 @@ export async function deleteAssets(filenames: string[]): Promise<void> {
 	if (!filenames.length) return;
 
 	const deletionPromises = filenames.map(async (filename) => {
-		const safeFilename = path.basename(filename);
-		if (safeFilename !== filename) {
+		const filePath = resolveInside(ASSETS_FOLDER, filename);
+		if (!filePath) {
+			console.warn(LOG_PREFIX, `Skipping unsafe asset path: ${filename}`);
 			return;
 		}
 
-		const filePath = path.join(ASSETS_FOLDER, safeFilename);
-
 		try {
 			await fs.unlink(filePath);
-			console.log(LOG_PREFIX, `Deleted asset: ${safeFilename}`);
+			console.log(LOG_PREFIX, `Deleted asset: ${filename}`);
 		} catch (err: unknown) {
 			const nodeErr = err as NodeJS.ErrnoException;
 			if (nodeErr.code !== "ENOENT") {
-				console.error(LOG_PREFIX, `Failed to delete ${safeFilename}:`, err);
+				console.error(LOG_PREFIX, `Failed to delete ${filename}:`, err);
 			}
 		}
 	});

@@ -55,7 +55,8 @@ export async function load() {
 }
 
 async function waitForInternetConnection() {
-	while (!net.isOnline()) {
+	const deadline = Date.now() + 30000;
+	while (!net.isOnline() && Date.now() < deadline) {
 		await new Promise((resolve) => setTimeout(resolve, 1000));
 	}
 }
