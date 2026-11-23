@@ -113,7 +113,7 @@ export async function isEncryptionAvailable<IPCHandle>() {
 	return await safeStorage.isAsyncEncryptionAvailable();
 }
 
-export async function saveFileToGCFolder<IPCHandle>(filePath: string, content: string | Buffer<ArrayBuffer>) {
+export async function saveFileToGCFolder<IPCHandle>(filePath: string, content: string | Uint8Array) {
 	const fullPath = resolveInside(getGoofCordFolderPath(), filePath);
 	if (!fullPath) throw new Error("Invalid file path");
 	await fs.promises.writeFile(fullPath, content);
