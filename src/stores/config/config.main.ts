@@ -21,7 +21,7 @@ export async function initConfigEncryption(): Promise<boolean> {
 
 	await app.whenReady();
 
-	_encryptionAvailable = safeStorage.isEncryptionAvailable();
+	_encryptionAvailable = await safeStorage.isAsyncEncryptionAvailable();
 
 	if (!_encryptionAvailable && firstLaunch) {
 		await dialog.showMessageBox({
@@ -138,7 +138,7 @@ async function saveToDisk(state: Config) {
 		for (const [key, value] of Object.entries(state)) {
 			if (isEncrypted(key)) {
 				// state is a copy, so we can just write to it
-				(state as any)[key as ConfigKey] = encryptSafeStorage(value);
+				(state as any)[key as ConfigKey] = await encryptSafeStorage(value);
 			}
 		}
 		await fs.promises.writeFile(getConfigLocation(), JSON.stringify(state, null, 2), "utf-8");
@@ -156,7 +156,7 @@ export async function decryptSettings() {
 	for (const [key, value] of Object.entries(config)) {
 		if (isEncrypted(key)) {
 			try {
-				(config as any)[key as ConfigKey] = decryptSafeStorage(value as string);
+				(config as any)[key as ConfigKey] = await decryptSafeStorage(value as string);
 			} catch (e) {
 				(config as any)[key as ConfigKey] = getDefaultValue(key as ConfigKey);
 			}
@@ -165,7 +165,7 @@ export async function decryptSettings() {
 	await configHost.set(config, { persist: false });
 }
 
-export function encryptSafeStorage(plaintext: unknown): string {
+export async function encryptSafeStorage(plaintext: unknown): Promise<string> {
 	const json = JSON.stringify(plaintext);
 
 	if (!_encryptionAvailable && _encryptionAvailable !== undefined) {
@@ -173,7 +173,7 @@ export function encryptSafeStorage(plaintext: unknown): string {
 	}
 
 	try {
-		const buf = safeStorage.encryptString(json);
+		const buf = await safeStorage.encryptStringAsync(json);
 		return `ENC:${buf.toString("base64")}`;
 	} catch (err) {
 		console.error(LOG_PREFIX, "encryptSafeStorage failed:", err);
@@ -182,7 +182,7 @@ export function encryptSafeStorage(plaintext: unknown): string {
 	}
 }
 
-export function decryptSafeStorage(stored: string): any {
+export async function decryptSafeStorage(stored: string): Promise<any> {
 	if (stored.startsWith("PLAIN:")) {
 		return JSON.parse(stored.slice(6));
 	}
@@ -191,8 +191,11 @@ export function decryptSafeStorage(stored: string): any {
 		const base64 = stored.slice(4);
 		try {
 			const buf = Buffer.from(base64, "base64");
-			const decrypted = safeStorage.decryptString(buf);
-			return JSON.parse(decrypted);
+			let decrypted = await safeStorage.decryptStringAsync(buf);
+			if (decrypted.shouldReEncrypt) {
+				decrypted = await safeStorage.decryptStringAsync(buf);
+			}
+			return JSON.parse(decrypted.result);
 		} catch (err) {
 			console.error(LOG_PREFIX, "decryptSafeStorage failed:", err);
 			throw new Error(`Cannot decrypt protected setting: ${getErrorMessage(err)}`);

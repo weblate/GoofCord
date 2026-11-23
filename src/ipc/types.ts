@@ -32,6 +32,7 @@ export interface IpcHandleChannels {
   "settings:invidiousConfigChanged": typeof ___windows_settings_settings_invidiousConfigChanged;
   "settings:openFolder": typeof ___windows_settings_settings_openFolder;
   "settings:reloadWindow": typeof ___windows_settings_settings_reloadWindow;
+  "utils:isEncryptionAvailable": typeof ___utils_isEncryptionAvailable;
   "utils:saveFileToGCFolder": typeof ___utils_saveFileToGCFolder;
 }
 
@@ -41,7 +42,6 @@ export interface IpcOnChannels {
   "messageEncryption:encryptMessage": typeof ___modules_messageEncryption_encryptMessage;
   "utils:getDisplayVersion": typeof ___utils_getDisplayVersion;
   "utils:getVersion": typeof ___utils_getVersion;
-  "utils:isEncryptionAvailable": typeof ___utils_isEncryptionAvailable;
 }
 
 export interface RegisteredIpcHandleChannels {

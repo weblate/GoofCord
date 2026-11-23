@@ -38,6 +38,6 @@ export function registerAllHandlers() {
   ipcMain.handle("settings:reloadWindow", async (event) => { return await ___windows_settings_settings_reloadWindow(); });
   ipcMain.on("utils:getDisplayVersion", (event) => { event.returnValue = ___utils_getDisplayVersion(); });
   ipcMain.on("utils:getVersion", (event) => { event.returnValue = ___utils_getVersion(); });
-  ipcMain.on("utils:isEncryptionAvailable", (event) => { event.returnValue = ___utils_isEncryptionAvailable(); });
+  ipcMain.handle("utils:isEncryptionAvailable", async (event) => { return await ___utils_isEncryptionAvailable(); });
   ipcMain.handle("utils:saveFileToGCFolder", async (event, filePath, content) => { return await ___utils_saveFileToGCFolder(filePath, content); });
 }

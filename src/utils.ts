@@ -109,8 +109,8 @@ export function getErrorMessage(error: unknown): string {
 	return toErrorWithMessage(error).message;
 }
 
-export function isEncryptionAvailable<IPCOn>() {
-	return safeStorage.isEncryptionAvailable();
+export async function isEncryptionAvailable<IPCHandle>() {
+	return await safeStorage.isAsyncEncryptionAvailable();
 }
 
 export async function saveFileToGCFolder<IPCHandle>(filePath: string, content: string | Buffer<ArrayBuffer>) {
