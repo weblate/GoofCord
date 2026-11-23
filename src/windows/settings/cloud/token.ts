@@ -1,6 +1,7 @@
 import { BrowserWindow } from "electron";
 
 import { getConfig, setConfig } from "../../../stores/config/config.main.ts";
+import { fetchWithTimeout } from "../../../utils.ts";
 import { mainWindow } from "../../main/main.ts";
 import { settingsWindow } from "../settings.ts";
 import { ENDPOINT_VERSION, LOG_PREFIX } from "./cloud.ts";
@@ -55,7 +56,7 @@ async function fetchTokenInternal(): Promise<string> {
 	const cloudHostUrl = getCloudHost();
 
 	// 1. Fetch Client ID
-	const clientIdResponse = await fetch(cloudHostUrl + ENDPOINT_VERSION + "clientid");
+	const clientIdResponse = await fetchWithTimeout(cloudHostUrl + ENDPOINT_VERSION + "clientid", {}, 15000);
 	if (!clientIdResponse.ok) {
 		throw new Error(`Failed to fetch client ID: ${clientIdResponse.status}`);
 	}
@@ -66,10 +67,12 @@ async function fetchTokenInternal(): Promise<string> {
 	// 2. Determine Vencord availability and get callback URL
 	let callbackUrl = "";
 
+	if (!mainWindow || mainWindow.isDestroyed()) throw new Error("Main window is unavailable");
+
 	const vencordAvailable = await mainWindow.webContents.executeJavaScript("window.Vencord?.Webpack !== undefined").catch(() => false);
 
 	if (vencordAvailable) {
-		mainWindow.show();
+		if (!mainWindow.isDestroyed()) mainWindow.show();
 		try {
 			callbackUrl = await getCallbackUrlViaVencord(clientId, cloudHostUrl);
 		} catch (e) {
@@ -89,7 +92,7 @@ async function fetchTokenInternal(): Promise<string> {
 	settingsWindow?.show();
 
 	// 3. Fetch Token using Callback URL
-	const tokenResponse = await fetch(callbackUrl);
+	const tokenResponse = await fetchWithTimeout(callbackUrl, {}, 15000);
 	if (!tokenResponse.ok) {
 		throw new Error(`Token exchange failed: ${tokenResponse.status}`);
 	}
@@ -126,9 +129,9 @@ async function getCallbackUrlViaVencord(clientId: string, cloudHostUrl: string):
 						...props,
 						scopes: ["identify"],
 						responseType: "code",
-						redirectUri: "${redirectUri}",
+						redirectUri: ${JSON.stringify(redirectUri)},
 						permissions: 0n,
-						clientId: "${clientId}",
+						clientId: ${JSON.stringify(clientId)},
 						cancelCompletesFlow: false,
 						callback: (result) => {
 							resolved = true;
@@ -169,6 +172,10 @@ async function getCallbackUrlViaWindow(cloudHostUrl: string): Promise<string> {
 				autoHideMenuBar: true,
 				parent: settingsWindow,
 				modal: true,
+				webPreferences: {
+					partition: "goofcord-cloud-auth",
+					sandbox: true,
+				},
 			});
 
 			const callbackPrefix = `${cloudHostUrl}${ENDPOINT_VERSION}callback`;

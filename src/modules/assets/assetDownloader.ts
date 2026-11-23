@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { Notification } from "electron";
 import pc from "picocolors";
 import { getConfig, setConfig } from "../../stores/config/config.main.ts";
-import { getErrorMessage, isPathAccessible } from "../../utils.ts";
+import { getErrorMessage, isPathAccessible, resolveInside } from "../../utils.ts";
 import { profile } from "../chromeSpoofer.ts";
 import { ASSETS_FOLDER } from "./assetLoader.ts";
 
@@ -62,7 +62,12 @@ export async function manageAssets() {
 	// Clean up
 	for (const filename of managedFiles) {
 		if (!expectedFiles.has(filename)) {
-			const filePath = path.join(ASSETS_FOLDER, filename);
+			const filePath = resolveInside(ASSETS_FOLDER, filename);
+			if (!filePath) {
+				console.warn(LOG_PREFIX, `Skipping unsafe managed asset path: ${filename}`);
+				configDirty = true;
+				continue;
+			}
 			try {
 				await fs.rm(filePath, { force: true });
 				console.log(LOG_PREFIX, `Garbage collected: ${filename}`);
@@ -84,7 +89,11 @@ export async function manageAssets() {
 			configDirty = true;
 		}
 
-		const filePath = path.join(ASSETS_FOLDER, filename);
+		const filePath = resolveInside(ASSETS_FOLDER, filename);
+		if (!filePath) {
+			console.warn(LOG_PREFIX, `Skipping unsafe asset path: ${filename}`);
+			continue;
+		}
 		if (!(await isPathAccessible(filePath))) {
 			missingAssetsDetected = true;
 		}
@@ -100,7 +109,7 @@ export async function manageAssets() {
 // Network update
 export async function updateAssets() {
 	const assetsConfig = getConfig("assets") as Record<string, string>;
-	const etagCache = getConfig("assetEtags") as Record<string, string>;
+	const etagCache = { ...(getConfig("assetEtags") as Record<string, string>) };
 
 	const errors: string[] = [];
 	let cacheDirty = false;
@@ -113,7 +122,11 @@ export async function updateAssets() {
 
 	const processAsset = async (name: string, urlStr: string) => {
 		const filename = resolveAssetFilename(name, urlStr);
-		const filepath = path.join(ASSETS_FOLDER, filename);
+		const filepath = resolveInside(ASSETS_FOLDER, filename);
+		if (!filepath) {
+			errors.push(`${name}: unsafe asset path`);
+			return;
+		}
 		const tempPath = `${filepath}.tmp`;
 
 		try {

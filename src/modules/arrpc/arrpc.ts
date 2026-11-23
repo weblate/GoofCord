@@ -11,27 +11,35 @@ let worker: Worker | undefined;
 
 export async function initArrpc<IPCHandle>() {
 	if (worker) {
-		await worker.terminate();
+		const previousWorker = worker;
 		worker = undefined;
+		try {
+			await previousWorker.terminate();
+		} catch (e) {
+			console.warn("Failed to terminate previous arRPC worker:", e);
+		}
 	}
 	if (!getConfig("arrpc")) return;
 
 	try {
-		worker = new Worker(path.join(dirname(), "./modules/arrpc/arrpcWorker.js"), {
+		const newWorker = new Worker(path.join(dirname(), "./modules/arrpc/arrpcWorker.js"), {
 			workerData: {
 				detectablePath: getGoofCordFolderPath() + "/detectable.json",
 			},
 		} as object);
+		worker = newWorker;
 
-		worker.on("message", (e: { eventType: string; data: string }) => {
+		newWorker.on("message", (e: { eventType: string; data: string }) => {
 			const { eventType, data } = e;
 			switch (eventType) {
 				case "activity":
-					mainWindow.webContents.send("arrpc:activity", data);
+					if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("arrpc:activity", data);
 					break;
 				case "invite":
-					mainWindow.show();
-					mainWindow.webContents.send("arrpc:invite", data);
+					if (mainWindow && !mainWindow.isDestroyed()) {
+						mainWindow.show();
+						mainWindow.webContents.send("arrpc:invite", data);
+					}
 					break;
 				default:
 					console.warn("arRPC worker sent an invalid event");
@@ -39,20 +47,22 @@ export async function initArrpc<IPCHandle>() {
 			}
 		});
 
-		worker.on("error", (e: Error) => {
+		newWorker.on("error", (e: Error) => {
 			console.error("The arRPC worker encountered a fatal error:", e);
-			void dialog.showMessageBox(mainWindow, {
-				type: "error",
-				title: "GoofCord was unable to start arRPC (Rich Presence)",
-				message: e.message,
-			});
-			void worker?.terminate();
-			worker = undefined;
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				void dialog.showMessageBox(mainWindow, {
+					type: "error",
+					title: "GoofCord was unable to start arRPC (Rich Presence)",
+					message: e.message,
+				});
+			}
+			void newWorker.terminate().catch(() => {});
+			if (worker === newWorker) worker = undefined;
 		});
 
-		worker.on("exit", (code) => {
+		newWorker.on("exit", (code) => {
 			if (code !== 0) console.error(`arRPC worker stopped unexpectedly with exit code: ${code}`);
-			worker = undefined;
+			if (worker === newWorker) worker = undefined;
 		});
 	} catch (e) {
 		console.error("Failed to start arRPC worker:", e);

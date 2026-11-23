@@ -9,7 +9,9 @@ import { injectFlashbar } from "./titlebarFlash.ts";
 const preloadStart = performance.now();
 
 function init() {
-	if (!document.location.hostname.includes("discord") || document.location.href.includes("/popout")) return;
+	const hostname = document.location.hostname;
+	const isDiscordHost = hostname === "discord.com" || hostname.endsWith(".discord.com");
+	if (!isDiscordHost || document.location.href.includes("/popout")) return;
 
 	loadScripts();
 	loadStyles();

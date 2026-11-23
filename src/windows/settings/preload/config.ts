@@ -1,7 +1,7 @@
 import { getConfig, setConfig } from "@root/src/stores/config/config.preload.ts";
 import { ipcRenderer } from "electron";
 
-import { invoke, sendSync } from "../../../ipc/client.preload.ts";
+import { invoke } from "../../../ipc/client.preload.ts";
 import type { Config, ConfigKey, SettingEntry } from "../../../settingsSchema.ts";
 
 const listeners = new Map<string, Set<() => void>>();
@@ -34,8 +34,8 @@ function notify(key: string): void {
 	}
 }
 
-export function isEncryptionAvailable(): boolean {
-	return Boolean(sendSync("utils:isEncryptionAvailable"));
+export async function isEncryptionAvailable(): Promise<boolean> {
+	return Boolean(await invoke("utils:isEncryptionAvailable"));
 }
 
 export async function saveSetting(key: ConfigKey, value: unknown, entry: SettingEntry | null): Promise<void> {

@@ -171,8 +171,14 @@ async function init() {
 	await Promise.all([whenLocalizationReady(), whenConfigReady()]);
 
 	const storedSettings = getConfig("screensharePreviousSettings") as ScreenshareSettings;
-	const s = !storedSettings || Array.isArray(storedSettings) ? (getDefaultValue("screensharePreviousSettings") as ScreenshareSettings) : storedSettings;
-	s.audioConfig ??= { mode: "none", pids: [] };
+	const baseSettings = !storedSettings || Array.isArray(storedSettings) ? (getDefaultValue("screensharePreviousSettings") as ScreenshareSettings) : storedSettings;
+	const s: ScreenshareSettings = {
+		...baseSettings,
+		audioConfig: {
+			mode: baseSettings.audioConfig?.mode ?? "none",
+			pids: Array.isArray(baseSettings.audioConfig?.pids) ? baseSettings.audioConfig.pids : [],
+		},
+	};
 
 	const payload = (await ipcRenderer.invoke("refreshScreenshareSources")) as ScreensharePayload;
 	isPatchcordMode = payload.isPatchcord;

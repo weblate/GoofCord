@@ -18,5 +18,7 @@ export async function clearCache<IPCHandle>() {
 		}
 	}
 
-	void mainWindow.webContents.executeJavaScript(`goofcord.titlebar.flashTitlebar("#5865F2")`);
+	if (mainWindow && !mainWindow.isDestroyed()) {
+		void mainWindow.webContents.executeJavaScript(`goofcord.titlebar.flashTitlebar("#5865F2")`);
+	}
 }

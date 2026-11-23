@@ -94,9 +94,10 @@ function subscribeToAppEvents() {
 
 		const keybind = cmdLine.find((x) => x.startsWith("--keybind"));
 		if (keybind !== undefined) {
-			const action = keybind.split("=")[1];
-			const keyup: boolean = keybind.startsWith("--keybind-up=") || keybind.startsWith("--keybind=");
-			if (action !== undefined) {
+			const separator = keybind.indexOf("=");
+			const action = separator === -1 ? undefined : keybind.slice(separator + 1);
+			const keyup = keybind.startsWith("--keybind-up=");
+			if (action !== undefined && mainWindow && !mainWindow.isDestroyed()) {
 				mainWindow.webContents.send("keybinds:trigger", action, keyup);
 			}
 		} else {
@@ -121,18 +122,29 @@ function subscribeToAppEvents() {
 	registerHandle("window:Hide", () => mainWindow.hide());
 	registerHandle("window:Close", () => mainWindow.close());
 	registerHandle("flashTitlebar", (color: string) => {
-		void mainWindow.webContents.executeJavaScript(`goofcord.titlebar.flashTitlebar("${color}")`);
+		void mainWindow.webContents.executeJavaScript(`goofcord.titlebar.flashTitlebar(${JSON.stringify(color)})`);
 	});
 	registerHandle("flashTitlebarWithText", (color: string, text: string) => {
-		void mainWindow.webContents.executeJavaScript(`goofcord.titlebar.flashTitlebarWithText("${color}", "${text}")`);
+		void mainWindow.webContents.executeJavaScript(`goofcord.titlebar.flashTitlebarWithText(${JSON.stringify(color)}, ${JSON.stringify(text)})`);
 	});
+}
+
+const DISCORD_HOSTS = new Set(["discord.com", "canary.discord.com", "ptb.discord.com"]);
+
+function isDiscordPopout(url: string): boolean {
+	try {
+		const parsed = new URL(url);
+		return parsed.protocol === "https:" && DISCORD_HOSTS.has(parsed.hostname) && (parsed.pathname === "/popout" || parsed.pathname.startsWith("/popout/"));
+	} catch {
+		return false;
+	}
 }
 
 function setWindowOpenHandler() {
 	// Define a handler for opening new windows.
 	mainWindow.webContents.setWindowOpenHandler(({ url }) => {
 		if (url === "about:blank") return { action: "allow" };
-		if (url.includes("discord.com/popout")) {
+		if (isDiscordPopout(url)) {
 			// Allow Discord voice chat popout
 			return {
 				action: "allow",

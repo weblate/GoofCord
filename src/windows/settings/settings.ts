@@ -8,7 +8,7 @@ import { app, BrowserWindow, dialog, shell } from "electron";
 
 import type { Config } from "../../settingsSchema.ts";
 import { firstLaunch, getConfig } from "../../stores/config/config.main.ts";
-import { dirname, getCustomIcon, getDisplayVersion, relToAbs, userDataPath } from "../../utils.ts";
+import { dirname, getCustomIcon, getDisplayVersion, relToAbs, resolveInside, userDataPath } from "../../utils.ts";
 import { mainWindow } from "../main/main.ts";
 import html from "./renderer/settings.html";
 
@@ -16,7 +16,9 @@ export let settingsWindow: BrowserWindow | undefined;
 let originalConfig: Config;
 
 export async function openFolder<IPCHandle>(folder: string) {
-	await shell.openPath(path.join(userDataPath, `/${folder}/`));
+	const target = resolveInside(userDataPath, folder);
+	if (!target) return;
+	await shell.openPath(target);
 }
 
 export async function invidiousConfigChanged<IPCHandle>() {

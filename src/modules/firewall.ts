@@ -9,6 +9,19 @@ function getConfigOrDefault<K extends ConfigKey>(toGet: K): Config[K] {
 	return getConfig("customFirewallRules") ? getConfig(toGet) : getDefaultValue(toGet);
 }
 
+function compileRegex(strings: string[]): RegExp | null {
+	if (!Array.isArray(strings)) return null;
+	const patterns = strings.filter(Boolean);
+	if (patterns.length === 0) return null;
+
+	try {
+		return new RegExp(patterns.join("|"), "i");
+	} catch (e) {
+		console.error(pc.red("[Firewall]"), "Invalid firewall regex:", e);
+		return null;
+	}
+}
+
 export function initFirewall() {
 	if (!getConfig("firewall")) return;
 	const blocklist = getConfigOrDefault("blocklist");
@@ -16,11 +29,12 @@ export function initFirewall() {
 	const allowedStrings = getConfigOrDefault("allowedStrings");
 
 	// If blocklist is not empty
-	if (blocklist[0] !== "") {
+	const blocklistPatterns = Array.isArray(blocklist) ? blocklist.filter(Boolean) : [];
+	if (blocklistPatterns.length > 0) {
 		// Blocking URLs. This list works in tandem with "blockedStrings" list.
 		session.defaultSession.webRequest.onBeforeRequest(
 			{
-				urls: blocklist,
+				urls: blocklistPatterns,
 			},
 			(_, callback) => callback({ cancel: true }),
 		);
@@ -28,15 +42,15 @@ export function initFirewall() {
 
 	/* If the request url includes any of those, it is blocked.
 	 * By doing so, we can match multiple unwanted URLs, making the blocklist cleaner and more efficient */
-	const blockRegex = new RegExp(blockedStrings.join("|"), "i"); // 'i' flag for case-insensitive matching
-	const allowRegex = new RegExp(allowedStrings.join("|"), "i");
+	const blockRegex = compileRegex(blockedStrings);
+	const allowRegex = compileRegex(allowedStrings);
 
 	session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ["<all_urls>"] }, (details, callback) => {
 		// No need to filter non-xhr requests
 		if (details.resourceType !== "xhr") return callback({ cancel: false });
 
-		if (blockRegex.test(details.url)) {
-			if (!allowRegex.test(details.url)) {
+		if (blockRegex?.test(details.url)) {
+			if (!allowRegex?.test(details.url)) {
 				return callback({ cancel: true });
 			}
 		}

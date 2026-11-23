@@ -96,6 +96,7 @@ export function cycleThroughPasswords<IPCHandle>() {
 	const displayPass = chosenPassword.slice(0, 2);
 
 	if (mainWindow && !mainWindow.isDestroyed()) {
-		void mainWindow.webContents.executeJavaScript(`goofcord.titlebar.flashTitlebarWithText("#f9c23c", "Chosen password: ${displayPass}...")`);
+		const text = `Chosen password: ${displayPass}...`;
+		void mainWindow.webContents.executeJavaScript(`goofcord.titlebar.flashTitlebarWithText("#f9c23c", ${JSON.stringify(text)})`);
 	}
 }

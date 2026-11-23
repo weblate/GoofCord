@@ -98,7 +98,7 @@ function FileInput({ id, onChange, entry }: InputProps): JSX.Element {
 
 		try {
 			const buffer = await file.arrayBuffer();
-			const path = await invoke("utils:saveFileToGCFolder", id, Buffer.from(buffer));
+			const path = await invoke("utils:saveFileToGCFolder", id, new Uint8Array(buffer));
 			onChange(path);
 		} catch (err) {
 			console.error(`Failed to save file for setting "${id}":`, err);

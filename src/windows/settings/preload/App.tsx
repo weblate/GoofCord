@@ -36,6 +36,7 @@ export function App(): JSX.Element {
 	const [activeTab, setActiveTab] = useState(getInitialTab);
 	const [revealedPanels, setRevealedPanels] = useState<Set<number>>(() => new Set());
 	const [warningDismissed, setWarningDismissed] = useState(false);
+	const [encryptionAvailable, setEncryptionAvailable] = useState<boolean | null>(null);
 
 	const [isSearchOpen, setIsSearchOpen] = useState(false);
 	const [searchQuery, setSearchQuery] = useState("");
@@ -125,6 +126,23 @@ export function App(): JSX.Element {
 		}
 	}, []);
 
+	useEffect(() => {
+		let cancelled = false;
+
+		isEncryptionAvailable()
+			.then((available) => {
+				if (!cancelled) setEncryptionAvailable(available);
+			})
+			.catch((error) => {
+				console.error("Failed to check encryption availability:", error);
+				if (!cancelled) setEncryptionAvailable(false);
+			});
+
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
 	const isShowingSearchResults = isSearchOpen && searchQuery.trim().length > 0;
 
 	return (
@@ -163,7 +181,7 @@ export function App(): JSX.Element {
 				)}
 			</header>
 
-			{!isEncryptionAvailable() && !warningDismissed && (
+			{encryptionAvailable === false && !warningDismissed && (
 				<div class="message warning">
 					<p>{i("settings-encryption-unavailable")}</p>
 					<button type="button" class="message-dismiss-btn" aria-label="Dismiss warning" onClick={() => setWarningDismissed(true)}>

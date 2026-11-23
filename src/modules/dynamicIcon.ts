@@ -57,6 +57,7 @@ async function generateBadgeOverlay(count: number): Promise<NativeImage | null> 
 	if (count === 0) {
 		return null;
 	}
+	if (!mainWindow || mainWindow.isDestroyed()) return null;
 	const clampedCount = Math.min(count, 100);
 
 	const cached = badgeCache.get(clampedCount);
@@ -94,6 +95,7 @@ export async function setBadgeCount<IPCHandle>(requestedCount: number) {
 			app.dock?.setBadge(count > 0 ? count.toString() : "");
 			break;
 		case "win32": {
+			if (!mainWindow || mainWindow.isDestroyed()) return;
 			const overlay = await generateBadgeOverlay(count);
 			const description = count > 0 ? `${count} Notifications` : count < 0 ? "Unread messages" : "No new notifications";
 			mainWindow.setOverlayIcon(overlay, description);
@@ -102,7 +104,7 @@ export async function setBadgeCount<IPCHandle>(requestedCount: number) {
 	}
 
 	if (process.platform === "darwin") return;
-	tray.setImage(await loadTrayImage(count));
+	if (tray) tray.setImage(await loadTrayImage(count));
 }
 
 const TRAY_COMPOSITOR_CODE = `
@@ -145,6 +147,7 @@ const TRAY_COMPOSITOR_CODE = `
 const trayCache = new Map<number, NativeImage>();
 export async function loadTrayImage(index: number) {
 	const clampedIndex = index === -1 ? -1 : Math.min(index, 100);
+	if (!mainWindow || mainWindow.isDestroyed()) return nativeImage.createFromPath(getTrayIcon());
 
 	const cached = trayCache.get(clampedIndex);
 	if (cached) return cached;

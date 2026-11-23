@@ -2,11 +2,11 @@ import { i } from "@root/src/stores/localization/localization.main.ts";
 import { Notification, shell } from "electron";
 
 import { getConfig } from "../stores/config/config.main.ts";
-import { getVersion } from "../utils.ts";
+import { fetchWithTimeout, getVersion } from "../utils.ts";
 
 async function getLatestVersion(): Promise<string> {
 	try {
-		const response = await fetch("https://api.github.com/repos/Milkshiift/GoofCord/releases/latest");
+		const response = await fetchWithTimeout("https://api.github.com/repos/Milkshiift/GoofCord/releases/latest", {}, 10000);
 		const data = await response.json();
 		if (!response.ok || !data.tag_name) return getVersion();
 		return data.tag_name.replace("v", "");

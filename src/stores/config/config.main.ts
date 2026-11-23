@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 
 import { app, dialog, safeStorage, shell } from "electron";
 import { createHost, type StoreHost } from "electron-sync-store/main";
@@ -15,25 +16,32 @@ const LOG_PREFIX = pc.yellowBright("[Config]");
 export let firstLaunch = false;
 let configHost: StoreHost<Config>;
 let _encryptionAvailable: boolean | undefined = undefined;
+type PendingEncryption = { value: unknown; fallback?: unknown };
+const pendingEncryption = new Map<ConfigKey, PendingEncryption>();
+let needsReEncryption = false;
+
+function getStorageBackend(): string {
+	return process.platform === "linux" ? safeStorage.getSelectedStorageBackend() : "unknown";
+}
 
 export async function initConfigEncryption(): Promise<boolean> {
 	if (_encryptionAvailable !== undefined) return _encryptionAvailable;
 
 	await app.whenReady();
 
-	_encryptionAvailable = safeStorage.isEncryptionAvailable();
+	_encryptionAvailable = await safeStorage.isAsyncEncryptionAvailable();
 
 	if (!_encryptionAvailable && firstLaunch) {
 		await dialog.showMessageBox({
 			type: "warning",
 			title: "Secure storage unavailable",
 			message: "Some sensitive settings (e.g. message encryption passwords) will be stored in plaintext.\n" + (process.platform === "linux" ? "Install and start gnome-keyring or kwallet, then restart the app." : "This is unusual on Windows/macOS — please report the issue."),
-			detail: `Backend: ${safeStorage.getSelectedStorageBackend() || "unknown"}`,
+			detail: `Backend: ${getStorageBackend() || "unknown"}`,
 		});
 	}
 
 	if (_encryptionAvailable && process.platform === "linux") {
-		console.log(LOG_PREFIX, `Secure backend: ${safeStorage.getSelectedStorageBackend()}`);
+		console.log(LOG_PREFIX, `Secure backend: ${getStorageBackend()}`);
 	} else if (!_encryptionAvailable) {
 		console.warn(LOG_PREFIX, "safeStorage encryption unavailable — using plaintext fallback");
 	}
@@ -52,6 +60,7 @@ export async function loadConfig(): Promise<void> {
 async function setup(): Promise<Config> {
 	console.log(LOG_PREFIX, "Setting up default GoofCord settings.");
 	firstLaunch = true;
+	pendingEncryption.clear();
 	const defaults = getDefaults();
 	await saveToDisk(defaults);
 	return defaults;
@@ -120,11 +129,19 @@ async function hydrate(): Promise<Config> {
 		try {
 			// fs.promises.readFile is much slower than fs.readFileSync
 			const rawData = fs.readFileSync(getConfigLocation(), "utf-8");
-			return JSON.parse(rawData) as Config;
+			const config = JSON.parse(rawData) as Config;
+			pendingEncryption.clear();
+			for (const [key, value] of Object.entries(config)) {
+				if (isEncrypted(key)) pendingEncryption.set(key as ConfigKey, { value });
+			}
+			return config;
 		} catch (e: unknown) {
 			const result = await handleConfigError(e);
 			if (result.data) return result.data;
-			if (!result.retry) return getDefaults();
+			if (!result.retry) {
+				pendingEncryption.clear();
+				return getDefaults();
+			}
 		}
 	}
 }
@@ -136,12 +153,24 @@ async function saveToDisk(state: Config) {
 
 	try {
 		for (const [key, value] of Object.entries(state)) {
-			if (isEncrypted(key)) {
-				// state is a copy, so we can just write to it
-				(state as any)[key as ConfigKey] = encryptSafeStorage(value);
+			if (!isEncrypted(key)) continue;
+
+			const typedKey = key as ConfigKey;
+			const pending = pendingEncryption.get(typedKey);
+			if (pending && value === pending.value) continue;
+
+			if (pending?.fallback !== undefined && isDeepStrictEqual(value, pending.fallback)) {
+				(state as any)[typedKey] = pending.value;
+				continue;
 			}
+
+			pendingEncryption.delete(typedKey);
+			(state as any)[typedKey] = await encryptSafeStorage(value);
 		}
-		await fs.promises.writeFile(getConfigLocation(), JSON.stringify(state, null, 2), "utf-8");
+		const configPath = getConfigLocation();
+		const tempPath = `${configPath}.tmp`;
+		await fs.promises.writeFile(tempPath, JSON.stringify(state, null, 2), "utf-8");
+		await fs.promises.rename(tempPath, configPath);
 	} catch (e: unknown) {
 		console.error(LOG_PREFIX, "Failed to save settings:", e);
 		dialog.showErrorBox("GoofCord was unable to save the settings", getErrorMessage(e));
@@ -152,20 +181,59 @@ export async function decryptSettings() {
 	// Safeguard for safeStorage. Ideally the function should be called after init.
 	await app.whenReady();
 
+	needsReEncryption = false;
 	const config = configHost.get();
+	let decryptionFailed = false;
+
 	for (const [key, value] of Object.entries(config)) {
-		if (isEncrypted(key)) {
-			try {
-				(config as any)[key as ConfigKey] = decryptSafeStorage(value as string);
-			} catch (e) {
-				(config as any)[key as ConfigKey] = getDefaultValue(key as ConfigKey);
+		if (!isEncrypted(key)) continue;
+
+		const typedKey = key as ConfigKey;
+		const pending = pendingEncryption.get(typedKey);
+		const encryptedValue = pending?.fallback !== undefined && isDeepStrictEqual(value, pending.fallback) ? pending.value : value;
+
+		try {
+			if (typeof encryptedValue !== "string") {
+				pendingEncryption.delete(typedKey);
+				continue;
+			}
+
+			(config as any)[typedKey] = await decryptSafeStorage(encryptedValue);
+			pendingEncryption.delete(typedKey);
+		} catch (e) {
+			decryptionFailed = true;
+			const message = getErrorMessage(e);
+			const temporarilyUnavailable = _encryptionAvailable === false || message.includes("temporarily unavailable");
+
+			if (temporarilyUnavailable) {
+				console.warn(LOG_PREFIX, `Keeping encrypted setting "${key}" unchanged because secure storage is unavailable: ${message}`);
+				pendingEncryption.set(typedKey, { value: encryptedValue, fallback: getDefaultValue(typedKey) });
+				(config as any)[typedKey] = getDefaultValue(typedKey);
+			} else {
+				console.error(LOG_PREFIX, `Failed to decrypt setting "${key}":`, e);
+				(config as any)[typedKey] = getDefaultValue(typedKey);
+				pendingEncryption.delete(typedKey);
 			}
 		}
 	}
-	await configHost.set(config, { persist: false });
+
+	if (needsReEncryption && !decryptionFailed) {
+		await configHost.set(config);
+	} else {
+		await configHost.set(config, { persist: false });
+	}
+
+	if (pendingEncryption.size > 0) {
+		await dialog.showMessageBox({
+			type: "warning",
+			title: "Some settings could not be decrypted",
+			message: "Secure storage is unavailable, so some encrypted settings could not be read. They have been left unchanged on disk and will be restored when secure storage is available again.",
+			detail: "Restart the app after unlocking your keyring. Changing these settings now will overwrite the saved encrypted values.",
+		});
+	}
 }
 
-export function encryptSafeStorage(plaintext: unknown): string {
+export async function encryptSafeStorage(plaintext: unknown): Promise<string> {
 	const json = JSON.stringify(plaintext);
 
 	if (!_encryptionAvailable && _encryptionAvailable !== undefined) {
@@ -173,7 +241,7 @@ export function encryptSafeStorage(plaintext: unknown): string {
 	}
 
 	try {
-		const buf = safeStorage.encryptString(json);
+		const buf = await safeStorage.encryptStringAsync(json);
 		return `ENC:${buf.toString("base64")}`;
 	} catch (err) {
 		console.error(LOG_PREFIX, "encryptSafeStorage failed:", err);
@@ -182,7 +250,7 @@ export function encryptSafeStorage(plaintext: unknown): string {
 	}
 }
 
-export function decryptSafeStorage(stored: string): any {
+export async function decryptSafeStorage(stored: string): Promise<any> {
 	if (stored.startsWith("PLAIN:")) {
 		return JSON.parse(stored.slice(6));
 	}
@@ -191,8 +259,12 @@ export function decryptSafeStorage(stored: string): any {
 		const base64 = stored.slice(4);
 		try {
 			const buf = Buffer.from(base64, "base64");
-			const decrypted = safeStorage.decryptString(buf);
-			return JSON.parse(decrypted);
+			let decrypted = await safeStorage.decryptStringAsync(buf);
+			if (decrypted.shouldReEncrypt) {
+				needsReEncryption = true;
+				decrypted = await safeStorage.decryptStringAsync(buf);
+			}
+			return JSON.parse(decrypted.result);
 		} catch (err) {
 			console.error(LOG_PREFIX, "decryptSafeStorage failed:", err);
 			throw new Error(`Cannot decrypt protected setting: ${getErrorMessage(err)}`);

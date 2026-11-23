@@ -109,14 +109,35 @@ export function getErrorMessage(error: unknown): string {
 	return toErrorWithMessage(error).message;
 }
 
-export function isEncryptionAvailable<IPCOn>() {
-	return safeStorage.isEncryptionAvailable();
+export async function isEncryptionAvailable<IPCHandle>() {
+	return await safeStorage.isAsyncEncryptionAvailable();
 }
 
-export async function saveFileToGCFolder<IPCHandle>(filePath: string, content: string | Buffer<ArrayBuffer>) {
-	const fullPath = path.join(getGoofCordFolderPath(), filePath);
+export async function saveFileToGCFolder<IPCHandle>(filePath: string, content: string | Uint8Array) {
+	const fullPath = resolveInside(getGoofCordFolderPath(), filePath);
+	if (!fullPath) throw new Error("Invalid file path");
 	await fs.promises.writeFile(fullPath, content);
 	return fullPath;
+}
+
+export function resolveInside(basePath: string, targetPath: string): string | undefined {
+	const base = path.resolve(basePath);
+	const resolved = path.resolve(base, targetPath);
+	const relative = path.relative(base, resolved);
+
+	if (relative === "" || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return undefined;
+	return resolved;
+}
+
+export async function fetchWithTimeout(input: string | URL | Request, init: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+	try {
+		return await fetch(input, { ...init, signal: controller.signal });
+	} finally {
+		clearTimeout(timeout);
+	}
 }
 
 export async function isPathAccessible(filePath: string): Promise<boolean> {
